@@ -1,4 +1,7 @@
 jquery-1.6.4.min.js
 jquery.mobile-1.0.min.css
 jquery.mobile-1.0.min.js
+jquery.mobile-1.1.0.min.js
+jquery.mobile-1.1.0.min.css
 phonegap*.js
+cordova*.js
