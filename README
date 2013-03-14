@@ -1,2 +1,17 @@
 The native Android DrupalGap Mobile Application Development Kit for Drupal.
 
+Installation
+============
+
+0. Complete the Android Hello World
+
+http://developer.android.com/training/basics/firstapp/index.html
+
+1. Make sure your AndroidManifest.xml has Internet permissions:
+
+<uses-permission android:name="android.permission.INTERNET" />
+
+2. Add this line of code after the setContentView(R.layout.main) call inside the onCreate function for the App.java file:
+
+DrupalGap drupalgap = new DrupalGap(getApplicationContext());
+
