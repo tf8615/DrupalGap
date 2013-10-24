@@ -421,7 +421,6 @@ function drupalgap_empty(value) {
             });
         });
     });
-    dpm(drupalgap.field_widget_info);
   }
   catch (error) {
     alert('drupalgap_field_widgets_load - ' + error);
@@ -1109,6 +1108,16 @@ function drupalgap_prepare_argument_entities(page_arguments, args) {
 }
 
 /**
+ * Given a page id, this will remove it from the DOM.
+ */
+function drupalgap_remove_page_from_dom(page_id) {
+  try {
+    $('#' + page_id).empty().remove();
+  }
+  catch (error) { drupalgap_error(error); }
+}
+
+/**
  * Implementation of drupal_set_title().
  */
 function drupalgap_set_title(title) {
@@ -1323,13 +1332,30 @@ function variable_get(name, default_value) {
 }
 
 /**
- * Given an JSON object, this will output it to the console.
+ * Given an JSON object, this will output it to the console. It accepts an
+ * optional boolean as second argument, if it is false the output sent to the
+ * console will not use pretty printing in a Chrome/Ripple environment.
  */
 function dpm(data) {
   try {
-    var name = arguments.callee.caller.name;
-    if (name && name != '') { console.log(); }
-    if (data) { console.log(JSON.stringify(data)); }
+    if (data) {
+      // If we're in ripple we can output it directly to the console and it will
+      // have pretty printing, otherwise we'll stringify it first.
+      // TODO - be careful, when just using console.log() with ripple, it will
+      // always print out the final value of data (because of pass by reference)
+      // this can be very misleading for debugging things.
+      if (typeof parent.window.ripple === 'function') {
+        if (typeof arguments[1] !== 'undefined' && arguments[1] == false) {
+          console.log(JSON.stringify(data));
+        }
+        else {
+          console.log(data);
+        }
+      }
+      else {
+        console.log(JSON.stringify(data));
+      }
+    }
   }
   catch (error) {
     alert('dpm - ' + error);
@@ -1341,13 +1367,13 @@ function dpm(data) {
  * http://tylerfrankenstein.com/code/javascript-date-time-yyyy-mm-dd-hh-mm-ss
  */
 function js_yyyy_mm_dd_hh_mm_ss () {
-  now = new Date();
-  year = "" + now.getFullYear();
-  month = "" + (now.getMonth() + 1); if (month.length == 1) { month = "0" + month; }
-  day = "" + now.getDate(); if (day.length == 1) { day = "0" + day; }
-  hour = "" + now.getHours(); if (hour.length == 1) { hour = "0" + hour; }
-  minute = "" + now.getMinutes(); if (minute.length == 1) { minute = "0" + minute; }
-  second = "" + now.getSeconds(); if (second.length == 1) { second = "0" + second; }
+  var now = new Date();
+  var year = "" + now.getFullYear();
+  var month = "" + (now.getMonth() + 1); if (month.length == 1) { month = "0" + month; }
+  var day = "" + now.getDate(); if (day.length == 1) { day = "0" + day; }
+  var hour = "" + now.getHours(); if (hour.length == 1) { hour = "0" + hour; }
+  var minute = "" + now.getMinutes(); if (minute.length == 1) { minute = "0" + minute; }
+  var second = "" + now.getSeconds(); if (second.length == 1) { second = "0" + second; }
   return year + "-" + month + "-" + day + " " + hour + ":" + minute + ":" + second;
 }
 

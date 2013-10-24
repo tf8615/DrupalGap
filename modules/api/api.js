@@ -38,9 +38,7 @@ drupalgap.api = {
         return false;
       }
       
-      if (drupalgap.settings.debug) {
-        console.log('' + call_options.url);
-      }
+      if (drupalgap.settings.debug) { dpm(call_options.url); }
       
       // Get CSRF token.
       _drupalgap_api_get_csrf_token(call_options, {
@@ -263,6 +261,11 @@ function hook_block_info() {}
 function hook_block_view() {}
 
 /**
+ *
+ */
+function hook_404(router_path) {}
+
+/**
  * Called after drupalgap_entity_render_content() assembles the entity.content
  * string. Use this to make modifications to the HTML output of the entity's
  * content before it is displayed.
@@ -270,7 +273,7 @@ function hook_block_view() {}
 function hook_entity_post_render_content(entity) { }
 
 /**
- * Used by modules to provide field widgets for forms.
+ * Used by modules to provide field widgets for form element items. 
  */
 function hook_field_widget_form(form, form_state, field, instance, langcode, items, delta, element) { }
 
@@ -278,6 +281,15 @@ function hook_field_widget_form(form, form_state, field, instance, langcode, ite
  * Called after a form element is assembled. Use it to alter a form element.
  */
 //function hook_form_element_alter(form, element, variables) { }
+
+/**
+ * Called after drupalgap_entity_render_field() assembles the field content
+ * string. Use this to make modifications to the HTML output of the entity's
+ * field before it is displayed. The field content will be inside of
+ * reference.content, so to make modifications, change reference.content. For
+ * more info: http://stackoverflow.com/questions/518000/is-javascript-a-pass-by-reference-or-pass-by-value-language
+ */
+function hook_entity_post_render_field(entity, field_name, field, reference) {}
 
 /**
  * This hook is used to make alterations to existing forms.

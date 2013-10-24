@@ -18,9 +18,25 @@ function _drupalgap_form_add_another_item(form_id, name, delta) {
       field_info_field:element.field_info_field,
       field_info_instance:element.field_info_instance
     };
-    window[element.field_info_instance.widget.module + '_field_widget_form'].apply(null, _drupalgap_form_element_items_widget_arguments(form, null, element, language, delta+1));
+    var field_widget_form_function = element.field_info_instance.widget.module + '_field_widget_form'; 
+    window[field_widget_form_function].apply(null, _drupalgap_form_element_items_widget_arguments(form, null, element, language, delta+1));
     drupalgap_form_local_storage_save(form);
     $(add_another_item_button).before(_drupalgap_form_render_element_item(form, element, variables, item));
+  }
+  catch (error) { drupalgap_error(error); }
+}
+
+/**
+ * Returns a 'Cancel' button object that can be used on most forms.
+ */
+function drupalgap_form_cancel_button() {
+  try {
+    return {
+      'title':'Cancel',
+      attributes:{
+        onclick:"javascript:drupalgap_back();"
+      }
+    };
   }
   catch (error) { drupalgap_error(error); }
 }
@@ -62,6 +78,30 @@ function drupalgap_form_element_access(element) {
     return access;
   }
   catch (error) { drupalgap_error(); }
+}
+
+/**
+ * Given a form element type, this will return the name of the module that
+ * implements the hook_field_widget_form() for the element. Keep in mind for now
+ * some of the module names don't exist, and are actually implemented inside
+ * the field module. If no module is found, it returns false.
+ */
+function drupalgap_form_element_get_module_name(type) {
+  try {
+    var module = false;
+    switch (type) {
+      case 'checkbox':
+      case 'radios':
+      case 'select':
+        module = 'options';
+        break;
+      case 'image':
+        module = 'image';
+        break;
+    }
+    return module;
+  }
+  catch (error) { drupalgap_error(error); }
 }
 
 /**
@@ -170,12 +210,9 @@ function drupalgap_form_state_values_assemble(form) {
     });
     // Attach the form state to drupalgap.form_states keyed by the form id.
     drupalgap.form_states[form.id] = form_state;
-    dpm(form_state);
     return form_state;
   }
-  catch (error) {
-    alert('drupalgap_form_state_values_assemble - ' + error);
-  }
+  catch (error) { drupalgap_error(error); }
 }
 
 /**
@@ -206,10 +243,6 @@ function _drupalgap_form_state_values_assemble_get_element_value(id, element) {
  */
 function drupalgap_get_form(form_id) {
   try {
-    if (drupalgap.settings.debug) {
-      console.log('drupalgap_get_form(' + form_id + ')');
-      console.log(JSON.stringify(arguments));
-    }
     var html = '';
     var form = drupalgap_form_load.apply(null, Array.prototype.slice.call(arguments));
     if (form) {
@@ -219,9 +252,7 @@ function drupalgap_get_form(form_id) {
     else { alert('drupalgap_get_form - failed to get form (' + form_id + ')'); }
     return html;
   }
-  catch (error) {
-    alert('drupalgap_get_form - ' + error);
-  }
+  catch (error) { drupalgap_error(error); }
 }
 
 /**
@@ -230,10 +261,6 @@ function drupalgap_get_form(form_id) {
  */
 function drupalgap_form_load(form_id) {
   try {
-    if (drupalgap.settings.debug) {
-      console.log('drupalgap_form_load(' + form_id + ')');
-      console.log(JSON.stringify(arguments));
-    }
     
     var form = drupalgap_form_defaults(form_id);
     
@@ -296,12 +323,10 @@ function drupalgap_form_load(form_id) {
           // Set the name property on the element if it isn't already set.
           if (!form.elements[name].name) { form.elements[name].name = name; }
           // If the element is a field, we'll append a language code and delta
-          // value to the ekenebt ud id, along with the field items appended
-          // onto the element uusing the language code and delta values.
+          // value to the element id, along with the field items appended
+          // onto the element using the language code and delta values.
           var id = null;
           if (element_is_field) {
-            //dpm(element.field_info_field);
-            //dpm(element.field_info_instance);
             // What's the number of allowed values (cardinality) on this field?
             // A cardinality of -1 means the field has unlimited values.
             var cardinality = parseInt(element.field_info_field.cardinality);
@@ -310,9 +335,21 @@ function drupalgap_form_load(form_id) {
                                // figure out how to handle the 'add another
                                // item' feature.
             }
-            form.elements[name][language] = {};
+            // Initialize the item collections language code if it hasn't been.
+            if (!form.elements[name][language]) { form.elements[name][language] = {}; }
+            // Prepare the item(s) for this element.
             for (var delta = 0; delta < cardinality; delta++) {
-              form.elements[name][language][delta] = drupalgap_form_element_item_create(name, form, language, delta);
+              // Prepare some item defaults.
+              var item = drupalgap_form_element_item_create(name, form, language, delta);
+              // If the delta for this item hasn't been created on the element,
+              // create it using the default item values. Otherwise, merge the
+              // default values into the pre existing item on the element.
+              if (!form.elements[name][language][delta]) {
+                form.elements[name][language][delta] = item;
+              }
+              else {
+                $.extend(form.elements[name][language][delta], item);
+              }
             }
           }
           else {
@@ -350,7 +387,8 @@ function drupalgap_form_load(form_id) {
 }
 
 /**
- *
+ * Given a form id, this will load the form from local storage and return it.
+ * If the form isn't in local storage, this returns false.
  */
 function drupalgap_form_local_storage_load(form_id) {
   try {
@@ -364,7 +402,8 @@ function drupalgap_form_local_storage_load(form_id) {
 }
 
 /**
- *
+ * Given a form, this will save the form to local storage, overwriting any
+ * previously saved forms.
  */
 function drupalgap_form_local_storage_save(form) {
   try {
@@ -412,6 +451,7 @@ function _drupalgap_form_render_elements(form) {
               type:'button',
               id:drupalgap_form_get_element_id(name, form.id)
             };
+            if (button.attributes) { $.extend(attributes, button.attributes); }
             content += '<button ' + drupalgap_attributes(attributes) + '">' +  button.title + '</button>';
           }
       });
@@ -436,20 +476,41 @@ function _drupalgap_form_render_element(form, element) {
     // Grab the language.
     var language = drupalgap.settings.language;
     
+    var items = false;
+    
+    // If this element is a field, extract the items from the language code and
+    // determine what module and hook will handle the items. If the element is
+    // not a field, just flatten it into a single item collection and determine
+    // which module handles this element type. Keep in mind not all the modules
+    // actually exist, and we've placed implementations into the field module.
+    var module = false;
+    var field_widget_form_function_name = false;
+    var field_widget_form_function = false;
+    if (element.is_field) {
+      items = element[language];
+      module = element.field_info_instance.widget.module;
+    }
+    else {
+      items = {0:element};
+      module = drupalgap_form_element_get_module_name(element.type);
+    }
+    if (module) {
+      field_widget_form_function_name = module + '_field_widget_form';
+      if (drupalgap_function_exists(field_widget_form_function_name)) {
+        field_widget_form_function = window[field_widget_form_function_name];
+      }
+      else {
+        console.log('WARNING: _drupalgap_form_render_element() - ' + field_widget_form_function_name + '() does not exist for the "' + element.type + '" form element!');
+      }
+    }
+    
+    // If there were no items, just return.
+    if (!items || items.length == 0) { return html; }
+    
     // Generate default variables.
     var variables = {
       attributes:{}
     };
-    
-    // Determine how many item(s) we're using on this element. Field elements
-    // are bundled in a language code and then keyed by a delta value. Other
-    // properties like nid, uid, title, etc are not bundled in a language code
-    // so we'll treat them as a signel item without a language code and delta.
-    
-    //var items = null;
-    var items = _drupalgap_form_element_items_load(form, null, element, language);
-    
-    if (!items || items.length == 0) { return html; }
     
     // Grab the info instance and info field for the field, then attach them
     // both to the variables object so all theme functions will have access
@@ -466,8 +527,10 @@ function _drupalgap_form_render_element(form, element) {
     // Render the element item(s). Remember the final delta value for later.
     var delta = 0;
     $.each(items, function(delta, item){
-        //dpm(item);
+        // Overwrite the variable's attributes id with the item's id.
         variables.attributes.id = item.id;
+        
+        // Attach the item as the element onto variables.
         variables.element = item;
         
         // Add a label to the element, except submit and hidden elements.
@@ -488,7 +551,14 @@ function _drupalgap_form_render_element(form, element) {
         
         // Merge element attributes into the variables object.
         variables.attributes = $.extend({}, variables.attributes, item.options.attributes);
-    
+        
+        // Call the hook_field_widget_form() if necessary. Merge any changes
+        // to the item back into this item.
+        if (field_widget_form_function) {
+          field_widget_form_function.apply(null, [form, null, element.field_info_field, element.field_info_instance, language, items, delta, element]);
+          $.extend(item, items[delta]);
+        }
+        
         // Render the element item.
         html += _drupalgap_form_render_element_item(form, element, variables, item);
     });
@@ -527,13 +597,12 @@ function _drupalgap_form_render_element(form, element) {
 }
 
 /**
- *
+ * Given a form, an element, the variables for a theme function, and the element
+ * item, this will return the html rendering of the element item.
  */
 function _drupalgap_form_render_element_item(form, element, variables, item) {
   try {
     var html = '';
-    
-    dpm(item);
     
     // Depending on the element type, if necessary, adjust the variables and/or
     // theme function to be used, then render the element by calling its theme
@@ -541,174 +610,55 @@ function _drupalgap_form_render_element_item(form, element, variables, item) {
     var theme_function = item.type;
     
     // Make any preprocess modifications to the elements so they will map
-    // cleanly to their theme function.
-    // The following element types apply cleanly to their corresponding theme
-    // functions:
-    //   email
-    //   hidden
-    //   password
-    //   radios
-    //   select
-    //   textfield
-    //   textarea                                          
-    // The following element types need their theme function adjusted:
-    //   textarea
-    //   text_long
-    //   text_with_summary
-    //   text_textarea
-    // The following element types need their variables adjusted:
-    //   checkbox
-    //   radios
-    //   select
-    //   textarea
-    //   text_long
-    //   text_with_summary
-    //   text_textarea
-    // The following element types are not yet supported:
-    //   taxonomy_term_reference
-    //   ...
-    // The following fields are outliers and need to be converted to use a theme
-    // function.
-    //   image
-    //   submit
-    switch (item.type) {
-      case 'checkbox':
-        // If the checkbox has a default value of 1, check the box.
-        if (item.default_value == 1) { variables.checked = true; }
-        break;
-      case 'image':
-        // Set the default button text, and if a value was provided,
-        // overwrite the button text.
-        var button_text = 'Add Image';
-        if (item.value) {
-          button_text = item.value;
-        }
-        // Place a hidden input to hold the file id.
-        html += '<input id="' + item.id + '" type="hidden" value="" />';
-        // Place variables into document for PhoneGap image processing.
-        var item_id_base = item.id.replace(/-/g, '_'); 
-        var image_field_source = item_id_base + '_imagefield_source';
-        var imagefield_destination_type = item_id_base + '_imagefield_destination_type';
-        var imagefield_data = item_id_base + '_imagefield_data';
-        eval('var ' + image_field_source + ' = null;');
-        eval('var ' + imagefield_destination_type + ' = null;');
-        eval('var ' + imagefield_data + ' = null;');
-        // Build an imagefield widget with PhoneGap. Contains a message
-        // div, an image item, and button to add an image.
-        //'<a href="#" data-role="button" id="' + item.id + '_upload" style="display: none;" onclick="_image_phonegap_camera_getPicture_upload();">Upload</a>'
-        html += '<div>' + 
-          '<div id="' + item.id + '-imagefield-msg"></div>' + 
-          '<img id="' + item.id + '-imagefield" style="display: none;" />' + 
-          '<a href="#" data-role="button" id="' + item.id + '-button">' + button_text + '</a>' +
-        '</div>';
-        // Open extra javascript declaration.
-        html += '<script type="text/javascript">';
-        // Add device ready listener for PhoneGap camera.
-        var event_listener = item_id_base +  '_imagefield_ready';
-        html += '$("#' + drupalgap_get_page_id(drupalgap_path_get()) + '").on("pageshow",function(){' +
-          'document.addEventListener("deviceready", ' + event_listener + ', false);' +
-        '});' + 
-        'function ' + event_listener +  '() {' +
-          image_field_source + ' = navigator.camera.PictureSourceType;' +
-          imagefield_destination_type + ' = navigator.camera.DestinationType;' +
-        '}';
-        // Define error callback function.
-        var imagefield_error = item_id_base + '_error';
-        html += 'function ' + imagefield_error + '(message) {' +
-          'if (message != "Camera cancelled.") {' +
-            'alert("' + imagefield_error + ' - " + message);' +
-          '}' +
-        '}';
-        // Define success callback function.
-        var imagefield_success = item_id_base + '_success';
-        html += 'function ' + imagefield_success + '(imageData) {' +
-          '_image_phonegap_camera_getPicture_success({field_name:"' + item.name + '", image:imageData, id:"' + item.id + '"})' +
-        '}';
-        // Determine image quality.
-        var quality = 50;
-        if (drupalgap.settings.camera.quality) {
-          quality = drupalgap.settings.camera.quality;
-        }
-        // Add click handler for photo button.
-        html += '$("#' + item.id + '-button").on("click",function(){' +
-          'var photo_options = {' +
-            'quality: ' + quality + ',' +
-            'destinationType: ' + imagefield_destination_type + '.DATA_URL,' +
-            'correctOrientation: true' +
-          '};' +
-          'navigator.camera.getPicture(' + imagefield_success + ', ' + imagefield_error + ', photo_options);' +
-        '});';
-        // Close extra javascript declaration.
-        html += '</script>';
-        break;
-      case "radios":
-        // Add options and value to variables and remove the value attribute.
-        variables.options = item.options;
-        variables.value = item.default_value;
-        delete variables.attributes.value;
-        break;
-      case "select":
-        // Add options and value to variables and remove the value attribute.
-        variables.options = item.options;
-        variables.value = item.default_value;
-        delete variables.attributes.value;
-        // Required?
-        if (item.required) {
-          variables.options[-1] = 'Select';
-          variables.value = -1;
-        }
-        break;
-      case "submit":
-        variables.attributes.onclick = '_drupalgap_form_submit(\'' + form.id + '\');';
-        if (!variables.attributes['data-theme']) {
-          variables.attributes['data-theme'] = 'b';
-        }
-        break;
-      case "text":
-        theme_function = 'textfield';
-        break;
-      case 'textarea':
-      case 'text_long':
-      case "text_with_summary":
-      case 'text_textarea':
-        theme_function = 'textarea';
-        // Add value to variables and remove the value attribute.
-        variables.value = item.default_value;
-        delete variables.attributes.value;
-        break;
+    // cleanly to their theme function. A hook_field_widget_form() should be
+    // used instead here.
+    if (item.type == 'submit') {
+      // TODO - convert this to a field widget form hook?
+      variables.attributes.onclick = '_drupalgap_form_submit(\'' + form.id + '\');';
+      if (!variables.attributes['data-theme']) {
+        variables.attributes['data-theme'] = 'b';
+      }
     }
     
+    // Merge the item into variables.
+    $.extend(variables, item);
+    
+    // If a value isn't set on variables, try to set it with the default value
+    // on the item.
+    if (typeof variables.value === 'undefined' || variables.value == null) {
+      if (typeof item.default_value !== 'undefined') {
+        variables.value = item.default_value;
+      }
+    }
     
     // If the item isn't an outlier, run it through the theme system.
-    //if (item.type != 'submit' && item.type != 'image') {
-      // Theme the item.
-      if (drupalgap_function_exists('theme_' + theme_function)) {
-        html += theme(theme_function, variables);
-      }
+    if (drupalgap_function_exists('theme_' + theme_function)) {
+      html += theme(theme_function, variables);
+    }
+    else {
+      if (item.markup || item.markup == '') { html += item.markup; }
       else {
-        if (item.markup || item.markup == '') {
-          html += item.markup; 
-        }
-        else {
-          var msg = 'Field ' + item.type + ' not supported.';
-          html += '<div><em>' + msg + '</em></div>';
-          console.log('WARNING: _drupalgap_form_render_element_item() - ' + msg);
-        }
+        var msg = 'Field ' + item.type + ' not supported.';
+        html += '<div><em>' + msg + '</em></div>';
+        console.log('WARNING: _drupalgap_form_render_element_item() - ' + msg);
       }
-    //}
+    }
+    
     return html;
   }
   catch (error) { drupalgap_error(error); }
 }
 
 /**
- *
+ * Given a form, the form state, an element in the form, and a language code,
+ * this will generate the Forms API Element Item(s) for the given element. Field
+ * elements will be keyed by a language code and delta value(s), while flat
+ * elements will be keyed be delta zero.
  */
-function _drupalgap_form_element_items_load(form, form_state, element, language) {
+/*function _drupalgap_form_element_items_load(form, form_state, element, language) {
   try {
     var items = false;
     if (element.is_field) {
-      dpm(element);
       // What's the cardinatlity (number of allowed values) on this field?
       var cardinality = parseInt(element.field_info_field.cardinality);
       if (cardinality == -1) {
@@ -716,10 +666,8 @@ function _drupalgap_form_element_items_load(form, form_state, element, language)
                          // figure out how to handle the 'add another
                          // item' feature.
         //cardinality = form.elements[element.name][language].length;
-        cardinality = Object.keys(form.elements[element.name][language]).length
-        dpm(cardinality);
+        cardinality = Object.keys(form.elements[element.name][language]).length;
         if (!cardinality) { cardinality = 1; }
-        dpm(cardinality);
       }
       items = _drupalgap_form_element_items_widget_load(form, form_state, element, language, cardinality);
     }
@@ -730,10 +678,12 @@ function _drupalgap_form_element_items_load(form, form_state, element, language)
     return items;
   }
   catch (error) { drupalgap_error(error); }
-}
+}*/
 
 /**
- *
+ * Given an element name, the form, a language code and a delta value, this
+ * will return default values that can be used to place an item element into a
+ * Forms API object.
  */
 function drupalgap_form_element_item_create(name, form, language, delta) {
   try {
@@ -751,19 +701,19 @@ function drupalgap_form_element_item_create(name, form, language, delta) {
 /**
  *
  */
-function _drupalgap_form_element_item_load(form, form_state, element, language, delta) {
+/*function _drupalgap_form_element_item_load(form, form_state, element, language, delta) {
   try {
     var items = _drupalgap_form_element_items_load(form, form_state, element, language);
     if (items && items[delta]) { return items[delta]; }
     return false;
   }
   catch (error) { drupalgap_error(error); }
-}
+}*/
 
 /**
  *
  */
-function _drupalgap_form_element_items_widget_load(form, form_state, element, language, cardinality) {
+/*function _drupalgap_form_element_items_widget_load(form, form_state, element, language, cardinality) {
   try {
     var items = false;
     // What module handles this element?
@@ -792,7 +742,7 @@ function _drupalgap_form_element_items_widget_load(form, form_state, element, la
     return items;
   }
   catch (error) { drupalgap_error(error); }
-}
+}*/
 
 /**
  *
@@ -818,10 +768,6 @@ function _drupalgap_form_element_items_widget_arguments(form, form_state, elemen
  */
 function _drupalgap_form_submit(form_id) {
   try {
-    if (drupalgap.settings.debug) {
-      console.log('_drupalgap_form_submit(' + form_id + ')');
-      console.log(JSON.stringify(arguments));
-    }
     // Load the form from local storage.
     var form = drupalgap_form_local_storage_load(form_id);
     if (!form) {
@@ -848,9 +794,6 @@ function _drupalgap_form_submit(form_id) {
     // If there were validation errors, show the form errors and stop the
     // form submission.
     if (!jQuery.isEmptyObject(drupalgap.form_errors)) {
-      if (drupalgap.settings.debug) {
-        console.log(JSON.stringify(drupalgap.form_errors));
-      }
       var html = '';
       $.each(drupalgap.form_errors, function(name, message){
           html += message + '\n\n';
@@ -889,10 +832,6 @@ function _drupalgap_form_submit(form_id) {
  */
 function _drupalgap_form_validate(form, form_state) {
   try {
-    if (drupalgap.settings.debug) {
-      console.log('_drupalgap_form_validate()');
-      console.log(JSON.stringify(arguments));
-    }
     $.each(form.elements, function(name, element) {
         if (name == 'submit') { return; }
         if (element.required) {
@@ -1020,6 +959,7 @@ function theme_radios(variables) {
       // Init a delta value so each radio button can have a unique id.
       var delta = 0;
       $.each(variables.options, function(value, label){
+          if (value == 'attributes') { return; } // Skip the attributes.
           var checked = '';
           if (variables.value && variables.value == value) {
             checked = ' checked="checked" ';
@@ -1045,6 +985,7 @@ function theme_select(variables) {
     var options = '';
     if (variables.options) {
       $.each(variables.options, function(value, label){
+          if (value == 'attributes') { return; } // Skip the attributes.
           var selected = '';
           if (variables.value && variables.value == value) {
             selected = ' selected ';
