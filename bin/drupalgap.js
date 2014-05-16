@@ -1042,12 +1042,23 @@ function drupalgap_max_width() {
  * if the user has access, false otherwise. You may optionally pass in a user
  * account object as the second argument to check access on a specific user.
  * @param {String} path
- * @return {Boolean}
+ * @param {Object} options The options object including at minimum a 'success'
+ *                         callback function property.
  */
-function drupalgap_menu_access(path) {
+function drupalgap_menu_access(path, options) {
   try {
+
+    // Make sure a success callback has been provided.
+    if (typeof options.success === 'undefined') {
+      console.log(
+        'drupalgap_menu_access - no success callback provided in options!'
+      );
+      return;
+    }
+
     // User #1 is allowed to do anything, I mean anything.
-    if (Drupal.user.uid == 1) { return true; }
+    if (Drupal.user.uid == 1) { options.success(true); }
+
     // Everybody else will not have access unless we prove otherwise.
     var access = false;
     if (drupalgap.menu_links[path]) {
@@ -1072,6 +1083,7 @@ function drupalgap_menu_access(path) {
           // the menu link, so we'll assume everyone has access.
           access = true;
         }
+        options.success(access);
       }
       else {
 
@@ -1083,16 +1095,21 @@ function drupalgap_menu_access(path) {
         if (drupalgap_function_exists(function_name)) {
           // Grab the access callback function. If there are any access args
           // send them along, or just call the function directly.
-          // access arguments.
           var fn = window[function_name];
           if (drupalgap.menu_links[path].access_arguments) {
             var access_arguments =
               drupalgap.menu_links[path].access_arguments.slice(0);
             var args = arg();
-            drupalgap_prepare_argument_entities(access_arguments, args);
-            return fn.apply(null, Array.prototype.slice.call(access_arguments));
+            drupalgap_prepare_argument_entities(access_arguments, args, {
+                success: function() {
+                  options.success(fn.apply(
+                      null,
+                      Array.prototype.slice.call(access_arguments)
+                  ));
+                }
+            });
           }
-          else { return fn(); }
+          else { options.success(fn()); }
         }
         else {
           console.log('drupalgap_menu_access - access call back (' +
@@ -1104,7 +1121,6 @@ function drupalgap_menu_access(path) {
     else {
       console.log('drupalgap_menu_access - path (' + path + ') does not exist');
     }
-    return access;
   }
   catch (error) { console.log('drupalgap_menu_access - ' + error); }
 }
@@ -1185,14 +1201,16 @@ function drupalgap_place_args_in_path(input_path) {
     console.log('drupalgap_place_args_in_path - ' + error);
   }
 }
+
 /**
  * Converts a hook_menu items page_arguments path like node/123 so arg zero
  * would be 'node' and arg 1 would be the loaded entity node. Also works for MVC
  * page paths, converts the integer into an MVC item.
  * @param {Array} page_arguments
  * @param {Array} args
+ * @param {Object} options
  */
-function drupalgap_prepare_argument_entities(page_arguments, args) {
+function drupalgap_prepare_argument_entities(page_arguments, args, options) {
   try {
     // If argument zero is an entity type (or base type, e.g. taxonomy), and we
     // have at least one integer argument, replace the page call back's integer
@@ -1200,6 +1218,7 @@ function drupalgap_prepare_argument_entities(page_arguments, args) {
     if (args.length > 1 &&
           (
             args[0] == 'comment' ||
+            args[0] == 'file' ||
             args[0] == 'node' ||
             (args[0] == 'taxonomy' &&
               (args[1] == 'vocabulary' || args[1] == 'term')
@@ -1233,27 +1252,33 @@ function drupalgap_prepare_argument_entities(page_arguments, args) {
         // Load the entity. MVC items need to pass along the module name and
         // model type to its load function. All other entity load functions just
         // need the entity id.
+
+        // Since entities are loaded async, setup a success callback before
+        // trying to load them.
+        var success = function(_entity) {
+          // Now that we have the entity loaded, replace the first integer we
+          // find in the page arguments with the loaded entity.
+          $.each(page_arguments, function(index, page_argument) {
+              if (is_int(parseInt(page_argument))) {
+                page_arguments[index] = entity;
+                return false;
+              }
+          });
+          // Finally call the caller's success.
+          options.success();
+        };
+
+        // Extract the entity id, and make the load call.
+        var entity_id = parseInt(args[int_arg_index]);
         if (args[0] == 'item') {
-          entity = entity_fn(args[1], args[2], parseInt(args[int_arg_index]));
+          entity = entity_fn(args[1], args[2], entity_id);
         }
         else {
-          // Force a reload (reset) when we load the entity if we are editing
-          // the entity.
-          if (arg(2) == 'edit') {
-            entity = entity_fn(parseInt(args[int_arg_index]), { reset: true });
-          }
-          else {
-             entity = entity_fn(parseInt(args[int_arg_index]));
-          }
+          // Force a reset when we load an entity for editing.
+          var load_options = { success: success };
+          if (arg(2) == 'edit') { load_options.reset = true; }
+          entity_fn(entity_id, load_options);
         }
-        // Now that we have the entity loaded, replace the first integer we find
-        // in the page arguments with the loaded entity.
-        $.each(page_arguments, function(index, page_argument) {
-            if (is_int(parseInt(page_argument))) {
-              page_arguments[index] = entity;
-              return false;
-            }
-        });
       }
       else {
         console.log(
@@ -1956,87 +1981,113 @@ function drupalgap_goto(path) {
     }
 
     // Make sure the user has access to this router path, if they don't send
-    // them to the 401 page.
-    if (!drupalgap_menu_access(router_path)) {
-      path = '401';
-      router_path = drupalgap_get_menu_link_router_path(path);
-    }
+    // them to the 401 page. Since the menu access system may need to make an
+    // async call to the server, we need to provide a success callback that
+    // will handle the result of the access check.
+    // @TODO - This isn't causing slow load times is it? If an entity isn't
+    // already in local storage at this point, the page may not respond until
+    // the server responds, yikes.
+    drupalgap_menu_access(router_path, {
+        success: function(access) {
+          try {
+            if (!access) {
+              path = '401';
+              router_path = drupalgap_get_menu_link_router_path(path);
+            }
 
-    // If the new router path is the same as the current router path and the new
-    // path is the same as the current path, don't go anywhere, unless it is a
-    // form submission, then continue.
-    if (router_path == drupalgap_router_path_get() &&
-        drupalgap_path_get() == path &&
-        !options.form_submission) {
-      return false;
-    }
+            // If the new router path is the same as the current router path and
+            // the new path is the same as the current path, don't go anywhere,
+            // unless it is a form submission, then continue.
+            if (router_path == drupalgap_router_path_get() &&
+                drupalgap_path_get() == path &&
+                !options.form_submission) {
+              return false;
+            }
 
-    // Grab the page id.
-    var page_id = drupalgap_get_page_id(path);
+            // Grab the page id.
+            var page_id = drupalgap_get_page_id(path);
 
-    // Return if we are trying to go to the path we are already on, unless this
-    // was a form submission, then we'll let the page rebuild itself. For
-    // accurracy we compare the jQM active page url with the destination page
-    // id.
-    // @todo - this boolean doesn't match the comment description of the code
-    // block, i.e. the form_submission check is opposite of what it says
-    if (drupalgap_jqm_active_page_url() == page_id && options.form_submission) {
-      // Clear any messages from the page before returning.
-      drupalgap_clear_messages();
-      return false;
-    }
+            // Return if we are trying to go to the path we are already on,
+            // unless this was a form submission, then we'll let the page
+            // rebuild itself. For accurracy we compare the jQM active page url
+            // with the destination page id.
+            // @todo - this boolean doesn't match the comment description of the
+            // code block, i.e. the form_submission check is opposite of what it
+            // says.
+            if (
+              drupalgap_jqm_active_page_url() == page_id &&
+              options.form_submission
+            ) {
+              // Clear any messages from the page before returning.
+              drupalgap_clear_messages();
+              return false;
+            }
 
-    // Save the back path.
-    drupalgap.back_path = drupalgap_path_get();
+            // Save the back path.
+            drupalgap.back_path = drupalgap_path_get();
 
-    // Set the current menu path to the path input.
-    drupalgap_path_set(path);
+            // Set the current menu path to the path input.
+            drupalgap_path_set(path);
 
-    // Set the drupalgap router path.
-    drupalgap_router_path_set(router_path);
+            // Set the drupalgap router path.
+            drupalgap_router_path_set(router_path);
 
-    // If the page is already in the DOM and we're asked to reload it, then
-    // remove the page and let it rebuild itself. If we're not reloading the
-    // page and we're not in the middle of a form submission, prevent the page
-    // from processing then change to it.
-    if (drupalgap_page_in_dom(page_id)) {
-      // If there are any hook_menu() item options for this router path, bring
-      // them into the current options without overwriting any existing values.
-      if (drupalgap.menu_links[router_path].options) {
-        options = $.extend(
-          {},
-          drupalgap.menu_links[router_path].options,
-          options
-        );
-      }
-      // Reload the page? If so, remove the page from the DOM, delete the
-      // reloadPage option, then set the reloadingPage option to true so others
-      // down the line will know the page is reloading. We can't pass along the
-      // actual reloadPage option since it may collide with jQM later on. We
-      // have to use 'force' when removing the page from the DOM since DG won't
-      // remove it since it thinks we are already on the page, so it won't
-      // remove it.
-      if (typeof options.reloadPage !== 'undefined' && options.reloadPage) {
-        drupalgap_remove_page_from_dom(page_id, { force: true });
-        delete options.reloadPage;
-        options.reloadingPage = true;
-      }
-      else if (!options.form_submission) {
-        // Clear any messages from the page.
-        drupalgap_clear_messages();
-        drupalgap.page.process = false;
-        $.mobile.changePage('#' + page_id, options);
-        return;
-      }
-    }
-    else if (typeof options.reloadPage !== 'undefined' && options.reloadPage) {
-      // The page is not in the DOM, and we're being asked to reload it, this
-      // can't happen, so we'll just delete the reloadPage option.
-      delete options.reloadPage;
-    }
+            // If the page is already in the DOM and we're asked to reload it,
+            // then remove the page and let it rebuild itself. If we're not
+            // reloading the page and we're not in the middle of a form
+            // submission, prevent the page from processing then change to it.
+            if (drupalgap_page_in_dom(page_id)) {
+              // If there are any hook_menu() item options for this router path,
+              // bring them into the current options without overwriting any
+              // existing values.
+              if (drupalgap.menu_links[router_path].options) {
+                options = $.extend(
+                  {},
+                  drupalgap.menu_links[router_path].options,
+                  options
+                );
+              }
+              // Reload the page? If so, remove the page from the DOM, delete
+              // the reloadPage option, then set the reloadingPage option to
+              // true so others down the line will know the page is reloading.
+              // We can't pass along the actual reloadPage option since it may
+              // collide with jQM later on. We have to use 'force' when removing
+              // the page from the DOM since DG won't remove it since it thinks
+              // we are already on the page, so it won't remove it.
+              if (
+                typeof options.reloadPage !== 'undefined' &&
+                options.reloadPage
+              ) {
+                drupalgap_remove_page_from_dom(page_id, { force: true });
+                delete options.reloadPage;
+                options.reloadingPage = true;
+              }
+              else if (!options.form_submission) {
+                // Clear any messages from the page.
+                drupalgap_clear_messages();
+                drupalgap.page.process = false;
+                $.mobile.changePage('#' + page_id, options);
+                return;
+              }
+            }
+            else if (
+              typeof options.reloadPage !== 'undefined' &&
+              options.reloadPage
+            ) {
+              // The page is not in the DOM, and we're being asked to reload it,
+              // this can't happen, so we'll just delete the reloadPage option.
+              delete options.reloadPage;
+            }
 
-    // Generate the page.
-    drupalgap_goto_generate_page_and_go(path, page_id, options);
+            // Generate the page.
+            drupalgap_goto_generate_page_and_go(path, page_id, options);
+
+          }
+          catch (error) {
+            console.log('drupalgap_goto - drupalgap_menu_access - ' + error);
+          }
+        }
+    });
 
   }
   catch (error) { console.log('drupalgap_goto - ' + error); }
@@ -7534,55 +7585,17 @@ function menu_block_view(delta) {
 
     // Are we about to view a normal menu, or the local task menu?
     if (delta == 'primary_local_tasks') {
-
-      // LOCAL TASKS MENU LINKS
-
-      // For the current page's router path, grab any local tasks menu links add
-      // them into the menu. Note, local tasks are located in a menu link item's
-      // children, if there are any. Local tasks typically have argument
-      // wildcards in them, so we'll replace their wildcards with the current
-      // args.
-      //var router_path =
-        //drupalgap_get_menu_link_router_path(drupalgap_get_current_path());
-      var router_path = drupalgap_router_path_get();
-      if (
-        drupalgap.menu_links[router_path] &&
-        drupalgap.menu_links[router_path].children
-      ) {
-        var menu_items = [];
-        var link_path = '';
-        $.each(
-          drupalgap.menu_links[router_path].children,
-          function(index, child) {
-            if (drupalgap.menu_links[child] &&
-              (drupalgap.menu_links[child].type == 'MENU_DEFAULT_LOCAL_TASK' ||
-               drupalgap.menu_links[child].type == 'MENU_LOCAL_TASK')
-            ) {
-              if (drupalgap_menu_access(child)) {
-                menu_items.push(drupalgap.menu_links[child]);
-              }
-            }
-          }
-        );
-        // If there was only one local task menu item, and it is the default
-        // local task, don't render the menu, otherwise render the menu as an
-        // item list as long as there are items to render.
-        if (
-          menu_items.length == 1 &&
-          menu_items[0].type == 'MENU_DEFAULT_LOCAL_TASK'
-        ) { html = ''; }
-        else {
-          var items = [];
-          $.each(menu_items, function(index, item) {
-              items.push(
-                l(item.title, drupalgap_place_args_in_path(item.path))
-              );
-          });
-          if (items.length > 0) {
-            html = theme('item_list', {'items': items});
-          }
-        }
-      }
+      // LOCAL TASKS MENU LINKS - this menu needs to be dynamically rendered
+      // upon the pageshow event, so for now we'll just render it as an empty
+      // div container.
+      html =
+        '<div id="' + menu_primary_local_tasks_container_id() + '"></div>' +
+        drupalgap_jqm_page_event_script_code({
+            page_id: drupalgap_get_page_id(),
+            jqm_page_event: 'pageshow',
+            jqm_page_event_callback: '_menu_primary_local_tasks_pageshow',
+            jqm_page_event_args: null
+        });
     }
     else {
 
@@ -7648,6 +7661,85 @@ function menu_save(menu) {
     eval('drupalgap.menus.' + menu.menu_name + ' =  menu;');
   }
   catch (error) { console.log('menu_save - ' + error); }
+}
+
+
+/**
+ * Returns the container id to use for the primary local tasks on the current
+ * page.
+ * @return {String}
+ */
+function menu_primary_local_tasks_container_id() {
+  try {
+    return drupalgap_get_page_id() + '_primary_local_tasks';
+  }
+  catch (error) {
+    console.log('menu_primary_local_tasks_container_id - ' + error);
+  }
+}
+
+/**
+ * The pageshow callback for the primary local tasks menu.
+ * @param {Object} options
+ */
+function _menu_primary_local_tasks_pageshow(options) {
+  try {
+
+    // @TODO - damn it, this approach still isn't working. We can't iterate over
+    // paths and call drupalgap_menu_access asynchronously, jeez louise, how are
+    // we going to get around this.
+
+    // For the current page's router path, grab any local tasks menu links add
+    // them into the menu. Note, local tasks are located in a menu link item's
+    // children, if there are any. Local tasks typically have argument
+    // wildcards in them, so we'll replace their wildcards with the current
+    // args.
+    var html = '';
+    var router_path = drupalgap_router_path_get();
+    if (
+      drupalgap.menu_links[router_path] &&
+      drupalgap.menu_links[router_path].children
+    ) {
+      var menu_items = [];
+      var link_path = '';
+      $.each(
+        drupalgap.menu_links[router_path].children,
+        function(index, child) {
+          if (drupalgap.menu_links[child] &&
+            (drupalgap.menu_links[child].type == 'MENU_DEFAULT_LOCAL_TASK' ||
+             drupalgap.menu_links[child].type == 'MENU_LOCAL_TASK')
+          ) {
+            if (drupalgap_menu_access(child)) {
+              menu_items.push(drupalgap.menu_links[child]);
+            }
+          }
+        }
+      );
+      // If there was only one local task menu item, and it is the default
+      // local task, don't render the menu, otherwise render the menu as an
+      // item list as long as there are items to render.
+      if (
+        menu_items.length == 1 &&
+        menu_items[0].type == 'MENU_DEFAULT_LOCAL_TASK'
+      ) { html = ''; }
+      else {
+        var items = [];
+        $.each(menu_items, function(index, item) {
+            items.push(
+              l(item.title, drupalgap_place_args_in_path(item.path))
+            );
+        });
+        if (items.length > 0) {
+          html = theme('item_list', {'items': items});
+        }
+      }
+    }
+    var container_id = menu_primary_local_tasks_container_id();
+    $('#' + container_id).html(html).trigger('create');
+  }
+  catch (error) {
+    console.log('_menu_primary_local_tasks_pageshow - ' + error);
+  }
 }
 
 /**
