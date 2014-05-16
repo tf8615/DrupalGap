@@ -367,87 +367,113 @@ function drupalgap_goto(path) {
     }
 
     // Make sure the user has access to this router path, if they don't send
-    // them to the 401 page.
-    if (!drupalgap_menu_access(router_path)) {
-      path = '401';
-      router_path = drupalgap_get_menu_link_router_path(path);
-    }
+    // them to the 401 page. Since the menu access system may need to make an
+    // async call to the server, we need to provide a success callback that
+    // will handle the result of the access check.
+    // @TODO - This isn't causing slow load times is it? If an entity isn't
+    // already in local storage at this point, the page may not respond until
+    // the server responds, yikes.
+    drupalgap_menu_access(router_path, {
+        success: function(access) {
+          try {
+            if (!access) {
+              path = '401';
+              router_path = drupalgap_get_menu_link_router_path(path);
+            }
 
-    // If the new router path is the same as the current router path and the new
-    // path is the same as the current path, don't go anywhere, unless it is a
-    // form submission, then continue.
-    if (router_path == drupalgap_router_path_get() &&
-        drupalgap_path_get() == path &&
-        !options.form_submission) {
-      return false;
-    }
+            // If the new router path is the same as the current router path and
+            // the new path is the same as the current path, don't go anywhere,
+            // unless it is a form submission, then continue.
+            if (router_path == drupalgap_router_path_get() &&
+                drupalgap_path_get() == path &&
+                !options.form_submission) {
+              return false;
+            }
 
-    // Grab the page id.
-    var page_id = drupalgap_get_page_id(path);
+            // Grab the page id.
+            var page_id = drupalgap_get_page_id(path);
 
-    // Return if we are trying to go to the path we are already on, unless this
-    // was a form submission, then we'll let the page rebuild itself. For
-    // accurracy we compare the jQM active page url with the destination page
-    // id.
-    // @todo - this boolean doesn't match the comment description of the code
-    // block, i.e. the form_submission check is opposite of what it says
-    if (drupalgap_jqm_active_page_url() == page_id && options.form_submission) {
-      // Clear any messages from the page before returning.
-      drupalgap_clear_messages();
-      return false;
-    }
+            // Return if we are trying to go to the path we are already on,
+            // unless this was a form submission, then we'll let the page
+            // rebuild itself. For accurracy we compare the jQM active page url
+            // with the destination page id.
+            // @todo - this boolean doesn't match the comment description of the
+            // code block, i.e. the form_submission check is opposite of what it
+            // says.
+            if (
+              drupalgap_jqm_active_page_url() == page_id &&
+              options.form_submission
+            ) {
+              // Clear any messages from the page before returning.
+              drupalgap_clear_messages();
+              return false;
+            }
 
-    // Save the back path.
-    drupalgap.back_path = drupalgap_path_get();
+            // Save the back path.
+            drupalgap.back_path = drupalgap_path_get();
 
-    // Set the current menu path to the path input.
-    drupalgap_path_set(path);
+            // Set the current menu path to the path input.
+            drupalgap_path_set(path);
 
-    // Set the drupalgap router path.
-    drupalgap_router_path_set(router_path);
+            // Set the drupalgap router path.
+            drupalgap_router_path_set(router_path);
 
-    // If the page is already in the DOM and we're asked to reload it, then
-    // remove the page and let it rebuild itself. If we're not reloading the
-    // page and we're not in the middle of a form submission, prevent the page
-    // from processing then change to it.
-    if (drupalgap_page_in_dom(page_id)) {
-      // If there are any hook_menu() item options for this router path, bring
-      // them into the current options without overwriting any existing values.
-      if (drupalgap.menu_links[router_path].options) {
-        options = $.extend(
-          {},
-          drupalgap.menu_links[router_path].options,
-          options
-        );
-      }
-      // Reload the page? If so, remove the page from the DOM, delete the
-      // reloadPage option, then set the reloadingPage option to true so others
-      // down the line will know the page is reloading. We can't pass along the
-      // actual reloadPage option since it may collide with jQM later on. We
-      // have to use 'force' when removing the page from the DOM since DG won't
-      // remove it since it thinks we are already on the page, so it won't
-      // remove it.
-      if (typeof options.reloadPage !== 'undefined' && options.reloadPage) {
-        drupalgap_remove_page_from_dom(page_id, { force: true });
-        delete options.reloadPage;
-        options.reloadingPage = true;
-      }
-      else if (!options.form_submission) {
-        // Clear any messages from the page.
-        drupalgap_clear_messages();
-        drupalgap.page.process = false;
-        $.mobile.changePage('#' + page_id, options);
-        return;
-      }
-    }
-    else if (typeof options.reloadPage !== 'undefined' && options.reloadPage) {
-      // The page is not in the DOM, and we're being asked to reload it, this
-      // can't happen, so we'll just delete the reloadPage option.
-      delete options.reloadPage;
-    }
+            // If the page is already in the DOM and we're asked to reload it,
+            // then remove the page and let it rebuild itself. If we're not
+            // reloading the page and we're not in the middle of a form
+            // submission, prevent the page from processing then change to it.
+            if (drupalgap_page_in_dom(page_id)) {
+              // If there are any hook_menu() item options for this router path,
+              // bring them into the current options without overwriting any
+              // existing values.
+              if (drupalgap.menu_links[router_path].options) {
+                options = $.extend(
+                  {},
+                  drupalgap.menu_links[router_path].options,
+                  options
+                );
+              }
+              // Reload the page? If so, remove the page from the DOM, delete
+              // the reloadPage option, then set the reloadingPage option to
+              // true so others down the line will know the page is reloading.
+              // We can't pass along the actual reloadPage option since it may
+              // collide with jQM later on. We have to use 'force' when removing
+              // the page from the DOM since DG won't remove it since it thinks
+              // we are already on the page, so it won't remove it.
+              if (
+                typeof options.reloadPage !== 'undefined' &&
+                options.reloadPage
+              ) {
+                drupalgap_remove_page_from_dom(page_id, { force: true });
+                delete options.reloadPage;
+                options.reloadingPage = true;
+              }
+              else if (!options.form_submission) {
+                // Clear any messages from the page.
+                drupalgap_clear_messages();
+                drupalgap.page.process = false;
+                $.mobile.changePage('#' + page_id, options);
+                return;
+              }
+            }
+            else if (
+              typeof options.reloadPage !== 'undefined' &&
+              options.reloadPage
+            ) {
+              // The page is not in the DOM, and we're being asked to reload it,
+              // this can't happen, so we'll just delete the reloadPage option.
+              delete options.reloadPage;
+            }
 
-    // Generate the page.
-    drupalgap_goto_generate_page_and_go(path, page_id, options);
+            // Generate the page.
+            drupalgap_goto_generate_page_and_go(path, page_id, options);
+
+          }
+          catch (error) {
+            console.log('drupalgap_goto - drupalgap_menu_access - ' + error);
+          }
+        }
+    });
 
   }
   catch (error) { console.log('drupalgap_goto - ' + error); }

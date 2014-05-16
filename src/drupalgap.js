@@ -1042,12 +1042,23 @@ function drupalgap_max_width() {
  * if the user has access, false otherwise. You may optionally pass in a user
  * account object as the second argument to check access on a specific user.
  * @param {String} path
- * @return {Boolean}
+ * @param {Object} options The options object including at minimum a 'success'
+ *                         callback function property.
  */
-function drupalgap_menu_access(path) {
+function drupalgap_menu_access(path, options) {
   try {
+
+    // Make sure a success callback has been provided.
+    if (typeof options.success === 'undefined') {
+      console.log(
+        'drupalgap_menu_access - no success callback provided in options!'
+      );
+      return;
+    }
+
     // User #1 is allowed to do anything, I mean anything.
-    if (Drupal.user.uid == 1) { return true; }
+    if (Drupal.user.uid == 1) { options.success(true); }
+
     // Everybody else will not have access unless we prove otherwise.
     var access = false;
     if (drupalgap.menu_links[path]) {
@@ -1072,6 +1083,7 @@ function drupalgap_menu_access(path) {
           // the menu link, so we'll assume everyone has access.
           access = true;
         }
+        options.success(access);
       }
       else {
 
@@ -1083,16 +1095,21 @@ function drupalgap_menu_access(path) {
         if (drupalgap_function_exists(function_name)) {
           // Grab the access callback function. If there are any access args
           // send them along, or just call the function directly.
-          // access arguments.
           var fn = window[function_name];
           if (drupalgap.menu_links[path].access_arguments) {
             var access_arguments =
               drupalgap.menu_links[path].access_arguments.slice(0);
             var args = arg();
-            drupalgap_prepare_argument_entities(access_arguments, args);
-            return fn.apply(null, Array.prototype.slice.call(access_arguments));
+            drupalgap_prepare_argument_entities(access_arguments, args, {
+                success: function() {
+                  options.success(fn.apply(
+                      null,
+                      Array.prototype.slice.call(access_arguments)
+                  ));
+                }
+            });
           }
-          else { return fn(); }
+          else { options.success(fn()); }
         }
         else {
           console.log('drupalgap_menu_access - access call back (' +
@@ -1104,7 +1121,6 @@ function drupalgap_menu_access(path) {
     else {
       console.log('drupalgap_menu_access - path (' + path + ') does not exist');
     }
-    return access;
   }
   catch (error) { console.log('drupalgap_menu_access - ' + error); }
 }
@@ -1185,14 +1201,16 @@ function drupalgap_place_args_in_path(input_path) {
     console.log('drupalgap_place_args_in_path - ' + error);
   }
 }
+
 /**
  * Converts a hook_menu items page_arguments path like node/123 so arg zero
  * would be 'node' and arg 1 would be the loaded entity node. Also works for MVC
  * page paths, converts the integer into an MVC item.
  * @param {Array} page_arguments
  * @param {Array} args
+ * @param {Object} options
  */
-function drupalgap_prepare_argument_entities(page_arguments, args) {
+function drupalgap_prepare_argument_entities(page_arguments, args, options) {
   try {
     // If argument zero is an entity type (or base type, e.g. taxonomy), and we
     // have at least one integer argument, replace the page call back's integer
@@ -1200,6 +1218,7 @@ function drupalgap_prepare_argument_entities(page_arguments, args) {
     if (args.length > 1 &&
           (
             args[0] == 'comment' ||
+            args[0] == 'file' ||
             args[0] == 'node' ||
             (args[0] == 'taxonomy' &&
               (args[1] == 'vocabulary' || args[1] == 'term')
@@ -1233,27 +1252,33 @@ function drupalgap_prepare_argument_entities(page_arguments, args) {
         // Load the entity. MVC items need to pass along the module name and
         // model type to its load function. All other entity load functions just
         // need the entity id.
+
+        // Since entities are loaded async, setup a success callback before
+        // trying to load them.
+        var success = function(_entity) {
+          // Now that we have the entity loaded, replace the first integer we
+          // find in the page arguments with the loaded entity.
+          $.each(page_arguments, function(index, page_argument) {
+              if (is_int(parseInt(page_argument))) {
+                page_arguments[index] = entity;
+                return false;
+              }
+          });
+          // Finally call the caller's success.
+          options.success();
+        };
+
+        // Extract the entity id, and make the load call.
+        var entity_id = parseInt(args[int_arg_index]);
         if (args[0] == 'item') {
-          entity = entity_fn(args[1], args[2], parseInt(args[int_arg_index]));
+          entity = entity_fn(args[1], args[2], entity_id);
         }
         else {
-          // Force a reload (reset) when we load the entity if we are editing
-          // the entity.
-          if (arg(2) == 'edit') {
-            entity = entity_fn(parseInt(args[int_arg_index]), { reset: true });
-          }
-          else {
-             entity = entity_fn(parseInt(args[int_arg_index]));
-          }
+          // Force a reset when we load an entity for editing.
+          var load_options = { success: success };
+          if (arg(2) == 'edit') { load_options.reset = true; }
+          entity_fn(entity_id, load_options);
         }
-        // Now that we have the entity loaded, replace the first integer we find
-        // in the page arguments with the loaded entity.
-        $.each(page_arguments, function(index, page_argument) {
-            if (is_int(parseInt(page_argument))) {
-              page_arguments[index] = entity;
-              return false;
-            }
-        });
       }
       else {
         console.log(
