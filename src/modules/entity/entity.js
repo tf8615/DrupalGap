@@ -639,13 +639,15 @@ function drupalgap_entity_get_core_fields(entity_type, bundle) {
           'default_value': '',
           'description': ''
         };
-        fields.picture = {
-          'type': 'image',
-          'widget_type': 'imagefield_widget',
-          'title': 'Picture',
-          'required': false,
-          'value': 'Add Picture'
-        };
+        if (drupalgap.site_settings.user_pictures) {
+          fields.picture = {
+            'type': 'image',
+            'widget_type': 'imagefield_widget',
+            'title': 'Picture',
+            'required': false,
+            'value': 'Add Picture'
+          };
+        }
         break;
       case 'taxonomy_term':
         fields = {
