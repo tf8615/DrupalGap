@@ -374,8 +374,7 @@ function drupalgap_entity_build_from_form_state(form, form_state) {
           // to the entity.
           // 添加判断不为空变量 图片 定位字段 接收不到值 是空 就不显示 提交后不更新
           for (var delta = 0; delta < allowed_values; delta++) {
-            if (typeof value[language][delta] !== 'undefined' &&
-                !empty(value[language][delta])) {
+            if (typeof value[language][delta] !== 'undefined' && !empty(value[language][delta])) {
 
               // @TODO - the way values are determined here is turning into
               // spaghetti code. Every form element needs its own
@@ -428,7 +427,7 @@ function drupalgap_entity_build_from_form_state(form, form_state) {
               }
 
               // If someone updated the key, use it.
-              // 2
+              // 过滤 tid fid 防止field_key.value覆盖掉key不能POST images
               if (key != field_key.value) { 
                 if(key == 'tid' || key == 'fid') {
                   key = key;
@@ -493,7 +492,7 @@ function drupalgap_entity_build_from_form_state(form, form_state) {
           }
         }
         else if (typeof value !== 'undefined'  && !empty(value)) { entity[name] = value; }
-        // 和上面一样判断不是空变量
+        // 和上面两个一样判断不是空变量
     });
     return entity;
   }
