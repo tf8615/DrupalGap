@@ -97,6 +97,8 @@ function drupalgap_entity_edit_form_delete_confirmation(entity_type,
         window.localStorage.removeItem(
           entity_local_storage_key(entity_type, entity_id)
         );
+        //防止删除node后首页无样式
+        drupalgap_remove_pages_from_dom();
         // Go to the front page.
         drupalgap_goto('', {'form_submission': true});
       };
