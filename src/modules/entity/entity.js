@@ -428,7 +428,7 @@ function drupalgap_entity_build_from_form_state(form, form_state) {
               }
 
               // If someone updated the key, use it.
-              // 过滤 tid fid 防止field_key.value覆盖掉key不能POST images
+              // 2
               if (key != field_key.value) { 
                 if(key == 'tid' || key == 'fid') {
                   key = key;
