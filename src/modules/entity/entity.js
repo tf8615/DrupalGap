@@ -346,7 +346,9 @@ function drupalgap_entity_build_from_form_state(form, form_state) {
 
           // Make sure there is at least one value before creating the form
           // element on the entity.
-          if (typeof value[language][0] === 'undefined') { return; }
+          // 添加防止空变量运行
+          if (typeof value[language][0] === 'undefined'  &&
+              empty(value[language][0])) { return; }
 
           // Create an empty object to house the field on the entity.
           entity[name] = {};
@@ -370,8 +372,10 @@ function drupalgap_entity_build_from_form_state(form, form_state) {
 
           // Now iterate over each delta on the form element, and add the value
           // to the entity.
+          // 添加判断不为空变量 图片 定位字段 接收不到值 是空 就不显示 提交后不更新
           for (var delta = 0; delta < allowed_values; delta++) {
-            if (typeof value[language][delta] !== 'undefined') {
+            if (typeof value[language][delta] !== 'undefined' &&
+                !empty(value[language][delta])) {
 
               // @TODO - the way values are determined here is turning into
               // spaghetti code. Every form element needs its own
@@ -424,7 +428,14 @@ function drupalgap_entity_build_from_form_state(form, form_state) {
               }
 
               // If someone updated the key, use it.
-              if (key != field_key.value) { key = field_key.value; }
+              // 过滤 tid fid 防止field_key.value覆盖掉key不能POST images
+              if (key != field_key.value) { 
+                if(key == 'tid' || key == 'fid') {
+                  key = key;
+                } else {
+                  key = field_key.value;
+                }
+              }
 
               // If we don't need a delta value, place the field value using the
               // key, if posible. If we're using a delta value, push the key
@@ -481,7 +492,8 @@ function drupalgap_entity_build_from_form_state(form, form_state) {
             }
           }
         }
-        else if (typeof value !== 'undefined') { entity[name] = value; }
+        else if (typeof value !== 'undefined'  && !empty(value)) { entity[name] = value; }
+        // 和上面一样判断不是空变量
     });
     return entity;
   }
